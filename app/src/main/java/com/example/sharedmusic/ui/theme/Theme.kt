@@ -6,7 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
-// Светлая схема Material 3: цвета берём из Color.kt
+// Светлая схема Material 3
 private val LightColors = lightColorScheme(
     primary = LightPrimary,
     onPrimary = LightOnPrimary,
@@ -14,7 +14,7 @@ private val LightColors = lightColorScheme(
     surface = LightSurface,
     onSurface = LightOnSurface,
     onSurfaceVariant = LightOnSurfaceVariant,
-    surfaceVariant = LightBackground
+    surfaceVariant = LightSurfaceVariant
 )
 
 // Тёмная схема Material 3
@@ -22,15 +22,14 @@ private val DarkColors = darkColorScheme(
     primary = DarkPrimary,
     onPrimary = DarkOnPrimary,
     background = DarkBackground,
-    surface = DarkBackground,
+    surface = DarkSurface,
     onSurface = DarkOnSurface,
     onSurfaceVariant = DarkOnSurfaceVariant,
-    surfaceVariant = DarkSurface
+    surfaceVariant = DarkSurfaceVariant
 )
 
 @Composable
 fun SharedMusicTheme(
-    // По умолчанию следуем системной тёмной теме телефона
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
