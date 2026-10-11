@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -57,24 +58,26 @@ fun EqualizerScreen(
     val surface = MaterialTheme.colorScheme.surface
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
 
-    // Состояния 5 частотных полос (-10 дБ .. +10 дБ)
-    var band60 by remember { mutableFloatStateOf(3f) }
-    var band230 by remember { mutableFloatStateOf(1f) }
-    var band910 by remember { mutableFloatStateOf(-1f) }
-    var band3k6 by remember { mutableFloatStateOf(2f) }
-    var band14k by remember { mutableFloatStateOf(4f) }
+    // Состояния 5 частотных полос (-10 дБ .. +10 дБ) — начальное состояние: всё в нуле
+    var band60 by remember { mutableFloatStateOf(0f) }
+    var band230 by remember { mutableFloatStateOf(0f) }
+    var band910 by remember { mutableFloatStateOf(0f) }
+    var band3k6 by remember { mutableFloatStateOf(0f) }
+    var band14k by remember { mutableFloatStateOf(0f) }
 
-    // Эффекты
-    var bassBoost by remember { mutableFloatStateOf(0.4f) }
-    var surroundSound by remember { mutableFloatStateOf(0.2f) }
+    // Эффекты — начальное состояние: выключены
+    var bassBoost by remember { mutableFloatStateOf(0f) }
+    var surroundSound by remember { mutableFloatStateOf(0f) }
 
-    // Выбранный пресет
-    var selectedPreset by remember { mutableStateOf("Рок") }
+    // Выбранный пресет — начальное состояние: «Обычный»
+    var selectedPreset by remember { mutableStateOf("Обычный") }
     val presets = listOf("Обычный", "Рок", "Поп", "Бас", "Вокал", "Джаз", "Электро")
 
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Отступ от верхней шторки
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
