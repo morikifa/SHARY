@@ -12,7 +12,9 @@ private val LightColors = lightColorScheme(
     onPrimary = LightOnPrimary,
     background = LightBackground,
     surface = LightSurface,
-    onSurface = LightOnSurface
+    onSurface = LightOnSurface,
+    onSurfaceVariant = LightOnSurfaceVariant,
+    surfaceVariant = LightBackground
 )
 
 // Тёмная схема Material 3
@@ -20,8 +22,10 @@ private val DarkColors = darkColorScheme(
     primary = DarkPrimary,
     onPrimary = DarkOnPrimary,
     background = DarkBackground,
-    surface = DarkSurface,
-    onSurface = DarkOnSurface
+    surface = DarkBackground,
+    onSurface = DarkOnSurface,
+    onSurfaceVariant = DarkOnSurfaceVariant,
+    surfaceVariant = DarkSurface
 )
 
 @Composable
