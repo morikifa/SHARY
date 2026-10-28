@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -55,6 +56,7 @@ fun VinylRecord(
     // Колбэк перемотки при ручном вращении (дельта угла в градусах)
     onScrub: ((deltaDegrees: Float) -> Unit)? = null
 ) {
+    val latestScrub by rememberUpdatedState(onScrub)
     val context = LocalContext.current
 
     // Проверяем системную настройку отключения анимаций (режим энергосбережения)
@@ -93,7 +95,8 @@ fun VinylRecord(
         modifier = modifier
             .aspectRatio(1f)
             // Перехват жестов для ручной перемотки вращением
-            .pointerInput(Unit) {
+            .pointerInput(onScrub != null) {
+                if (onScrub == null) return@pointerInput
                 detectDragGestures(
                     onDragStart = { offset ->
                         isDragging = true
@@ -117,7 +120,7 @@ fun VinylRecord(
                         // Поворачиваем пластинку в направлении пальца
                         angle = (angle + delta) % 360f
                         // Передаём дельту для перемотки трека
-                        onScrub?.invoke(delta)
+                        latestScrub?.invoke(delta)
                     }
                 )
             }

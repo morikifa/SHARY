@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.sharedmusic.model.Song
 import com.example.sharedmusic.ui.components.BackIcon
 import com.example.sharedmusic.ui.components.HeartIcon
 import com.example.sharedmusic.ui.components.SearchIcon
@@ -52,7 +53,9 @@ import com.example.sharedmusic.ui.theme.SharedMusicTheme
 fun SongListScreen(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
-    tracks: List<FakeTrack> = emptyList() // Пусто по умолчанию (начальное состояние)
+    songs: List<Song> = emptyList(),
+    canControlPlayback: Boolean = true,
+    onPlaySong: (Song) -> Unit = {}
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -67,20 +70,19 @@ fun SongListScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     // Множество индексов избранных треков
-    var likedIndices by remember { mutableStateOf(setOf<Int>()) }
+    var likedIds by remember { mutableStateOf(setOf<String>()) }
 
     // Фильтрация по поиску
-    val filteredTracks = tracks.filter { track ->
+    val filteredTracks = songs.filter { track ->
         searchQuery.isBlank() ||
-                track.title.contains(searchQuery, ignoreCase = true) ||
-                track.artist.contains(searchQuery, ignoreCase = true)
+                track.title.contains(searchQuery, ignoreCase = true)
     }
 
     // Фильтрация по вкладке (все / любимые)
     val displayTracks = if (selectedTab == 0) {
         filteredTracks
     } else {
-        filteredTracks.filterIndexed { index, _ -> index in likedIndices }
+        filteredTracks.filter { it.id in likedIds }
     }
 
     Column(
@@ -156,6 +158,10 @@ fun SongListScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        if (!canControlPlayback) {
+            Text("Управляет хозяин комнаты", color = onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall)
+        }
         // Список треков
         if (displayTracks.isEmpty()) {
             // Пустое состояние
@@ -207,7 +213,7 @@ fun SongListScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(displayTracks) { index, track ->
-                    val isLiked = index in likedIndices
+                    val isLiked = track.id in likedIds
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -216,10 +222,11 @@ fun SongListScreen(
                         Box(modifier = Modifier.weight(1f)) {
                             SongRow(
                                 title = track.title,
-                                artist = track.artist,
+                                artist = "Локальное аудио",
                                 duration = "0:00",
-                                coverColors = track.coverColors,
-                                onClick = { /* Воспроизвести трек */ }
+                                coverColors = listOf(Color(0xFFF64A8A), Color(0xFF323232)),
+                                onClick = { onPlaySong(track) },
+                                enabled = canControlPlayback
                             )
                         }
                         // Кнопка «Лайк»
@@ -228,10 +235,10 @@ fun SongListScreen(
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .clickable {
-                                    likedIndices = if (isLiked) {
-                                        likedIndices - index
+                                    likedIds = if (isLiked) {
+                                        likedIds - track.id
                                     } else {
-                                        likedIndices + index
+                                        likedIds + track.id
                                     }
                                 },
                             contentAlignment = Alignment.Center
