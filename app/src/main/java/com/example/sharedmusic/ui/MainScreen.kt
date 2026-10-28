@@ -58,59 +58,74 @@ import com.example.sharedmusic.viewmodel.MusicViewModel
 fun MainScreen(
     viewModel: MusicViewModel = viewModel(),
     onOpenLibraryClick: () -> Unit,
+    canControlPlayback: Boolean = true,
+    inRoom: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    // Системный выбор аудиофайлов из памяти устройства
+    // Плеер партнёра: добавление файла в общую библиотеку и запуск локально.
     val musicPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        viewModel.onMusicSelected(uri)
+        if (uri != null) {
+            viewModel.addSong(uri)
+            if (canControlPlayback) viewModel.songs.value.lastOrNull()?.let(viewModel::playSong)
+        }
     }
-
     val isPlaying by viewModel.isPlaying.collectAsState()
-    val selectedUri = viewModel.selectedMusicUri.value
-
+    val currentSong by viewModel.currentSong.collectAsState()
+    val songs by viewModel.songs.collectAsState()
+    val position by viewModel.positionMs.collectAsState()
+    val duration by viewModel.durationMs.collectAsState()
     var isShuffle by remember { mutableStateOf(false) }
     var isLiked by remember { mutableStateOf(false) }
-    var progress by remember { mutableFloatStateOf(0f) }
+    val hasTrack = currentSong != null
+    val progress = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
 
-    // Определяем, выбран ли трек
-    val hasTrack = selectedUri != null
-    val trackTitle = if (hasTrack) "Загруженный трек" else null
-    val artistName = if (hasTrack) "Локальное аудио" else null
-    val positionText = "0:00"
-    val durationText = if (hasTrack) "3:20" else "?"
+    fun playAdjacent(step: Int) {
+        if (!canControlPlayback || songs.isEmpty()) return
+        val index = songs.indexOfFirst { it.id == currentSong?.id }
+        val next = if (index < 0) 0 else (index + step + songs.size) % songs.size
+        viewModel.playSong(songs[next])
+    }
 
     MainScreenContent(
         isPlaying = isPlaying,
         isShuffle = isShuffle,
         isLiked = isLiked,
+        canControlPlayback = canControlPlayback,
+        inRoom = inRoom,
         onShuffleClick = { if (hasTrack) isShuffle = !isShuffle },
         onLikeClick = { if (hasTrack) isLiked = !isLiked },
         onAddMusicClick = { musicPicker.launch("audio/*") },
         onPlayStopClick = {
-            if (hasTrack) viewModel.toggleMusic()
-            else musicPicker.launch("audio/*")
+            if (canControlPlayback) {
+                if (hasTrack) viewModel.toggleMusic() else musicPicker.launch("audio/*")
+            }
         },
-        onPreviousClick = { progress = 0f },
-        onNextClick = { progress = 0f },
-        // Перемотка ползунком
-        onSeekProgress = { newProgress -> progress = newProgress },
-        // Перемотка вращением пластинки (4 оборота = 100% трека)
-        onScrubDelta = { deltaDegrees ->
-            if (hasTrack) {
-                progress = (progress + deltaDegrees / (360f * 4f)).coerceIn(0f, 1f)
+        onPreviousClick = { playAdjacent(-1) },
+        onNextClick = { playAdjacent(1) },
+        onSeekProgress = { if (canControlPlayback && duration > 0) viewModel.seekTo((it * duration).toLong()) },
+        // Поворот пластинки перематывает реальную позицию плеера.
+        onScrubDelta = { delta ->
+            if (canControlPlayback && duration > 0) {
+                viewModel.seekTo(position + (delta / (360f * 4f) * duration).toLong())
             }
         },
         onOpenLibraryClick = onOpenLibraryClick,
-        trackTitle = trackTitle,
-        artistName = artistName,
+        trackTitle = currentSong?.title,
+        artistName = if (hasTrack) "Локальное аудио" else null,
         progress = progress,
-        positionText = positionText,
-        durationText = durationText,
-        library = emptyList(), // Библиотека пуста (начальное состояние)
+        positionText = formatPlaybackTime(position),
+        durationText = if (duration > 0) formatPlaybackTime(duration) else "?",
+        library = songs.map { FakeTrack(it.title, "Локальное аудио", listOf(Color(0xFFF64A8A), Color(0xFF323232))) },
+        onLibraryTrackClick = { index -> if (canControlPlayback) songs.getOrNull(index)?.let(viewModel::playSong) },
         modifier = modifier
     )
+}
+
+private fun formatPlaybackTime(timeMs: Long): String {
+    val seconds = timeMs.coerceAtLeast(0) / 1000
+    return "%d:%02d".format(seconds / 60, seconds % 60)
 }
 
 // Чистая Composable-функция отрисовки главного экрана (пригодна для @Preview)
@@ -119,6 +134,9 @@ fun MainScreenContent(
     isPlaying: Boolean,
     isShuffle: Boolean = false,
     isLiked: Boolean = false,
+    canControlPlayback: Boolean = true,
+    inRoom: Boolean = false,
+    onLibraryTrackClick: (Int) -> Unit = {},
     onShuffleClick: () -> Unit = {},
     onLikeClick: () -> Unit = {},
     onAddMusicClick: () -> Unit,
@@ -158,7 +176,7 @@ fun MainScreenContent(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Плашка режима слева
-            ModeChip(text = "Локальный режим")
+            ModeChip(text = if (inRoom) "Комната" else "Локальный режим")
 
             // Кнопка добавления музыки справа
             Button(
@@ -181,19 +199,17 @@ fun MainScreenContent(
         VinylRecord(
             isPlaying = isPlaying,
             cover = cover,
-            onScrub = onScrubDelta,
+            onScrub = if (canControlPlayback) onScrubDelta else null,
             modifier = Modifier.fillMaxWidth(0.82f)
         )
 
         Spacer(Modifier.height(22.dp))
 
         // Название трека: если ничего не добавлено — нейтральная подсказка
-        Text(
+        FadingText(
             text = trackTitle ?: "Трек не выбран",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, textAlign = TextAlign.Center),
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(Modifier.height(4.dp))
         Text(
@@ -209,7 +225,7 @@ fun MainScreenContent(
         Slider(
             value = progress,
             onValueChange = onSeekProgress,
-            enabled = hasTrack,
+            enabled = hasTrack && canControlPlayback,
             modifier = Modifier.fillMaxWidth(),
             colors = SliderDefaults.colors(
                 thumbColor = primaryColor,
@@ -231,6 +247,7 @@ fun MainScreenContent(
         // Панель кнопок: Перемешивание, Назад, Играть/Пауза, Вперёд, Лайк
         PlayerControls(
             isPlaying = isPlaying,
+            canControlPlayback = canControlPlayback,
             isShuffle = isShuffle,
             isLiked = isLiked,
             hasTrack = hasTrack,
@@ -241,6 +258,10 @@ fun MainScreenContent(
             onLikeClick = onLikeClick
         )
 
+        if (!canControlPlayback) {
+            Text("Управляет хозяин комнаты", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall)
+        }
         Spacer(Modifier.height(24.dp))
 
         // Блок «Библиотека»
@@ -320,7 +341,7 @@ fun MainScreenContent(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                library.forEach { track -> LibraryCard(track) }
+                library.forEachIndexed { index, track -> LibraryCard(track, enabled = canControlPlayback) { onLibraryTrackClick(index) } }
             }
         }
     }
@@ -354,8 +375,8 @@ private fun ModeChip(text: String) {
 
 // Карточка трека в слайдере библиотеки
 @Composable
-private fun LibraryCard(track: FakeTrack) {
-    Column(modifier = Modifier.width(104.dp)) {
+private fun LibraryCard(track: FakeTrack, enabled: Boolean = true, onClick: () -> Unit = {}) {
+    Column(modifier = Modifier.width(104.dp).clickable(enabled = enabled, onClick = onClick)) {
         Box(
             modifier = Modifier
                 .size(104.dp)

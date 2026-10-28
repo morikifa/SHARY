@@ -22,6 +22,7 @@ fun PlayerControls(
     isShuffle: Boolean,
     isLiked: Boolean,
     hasTrack: Boolean,
+    canControlPlayback: Boolean = true,
     onShuffleClick: () -> Unit,
     onPreviousClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
@@ -34,6 +35,7 @@ fun PlayerControls(
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val controlsActive = hasTrack && canControlPlayback
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -45,11 +47,11 @@ fun PlayerControls(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .clickable(enabled = hasTrack, onClick = onShuffleClick),
+                .clickable(enabled = hasTrack && canControlPlayback, onClick = onShuffleClick),
             contentAlignment = Alignment.Center
         ) {
             ShuffleIcon(
-                tint = if (isShuffle) primaryColor else onSurfaceVariant.copy(alpha = if (hasTrack) 0.8f else 0.35f),
+                tint = if (isShuffle && controlsActive) primaryColor else onSurfaceVariant.copy(alpha = if (controlsActive) 0.8f else 0.35f),
                 iconSize = 22.dp
             )
         }
@@ -59,12 +61,12 @@ fun PlayerControls(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .clickable(enabled = hasTrack, onClick = onPreviousClick),
+                .clickable(enabled = hasTrack && canControlPlayback, onClick = onPreviousClick),
             contentAlignment = Alignment.Center
         ) {
             PlayerIcon(
                 kind = PlayerIconKind.PREVIOUS,
-                tint = onSurface.copy(alpha = if (hasTrack) 1f else 0.35f),
+                tint = onSurface.copy(alpha = if (controlsActive) 1f else 0.35f),
                 iconSize = 24.dp
             )
         }
@@ -75,14 +77,14 @@ fun PlayerControls(
                 .size(72.dp)
                 .clip(CircleShape)
                 .background(
-                    if (isPlaying) primaryColor else surfaceVariant
+                    if (isPlaying && canControlPlayback) primaryColor else surfaceVariant
                 )
-                .clickable(onClick = onPlayPauseClick),
+                .clickable(enabled = canControlPlayback, onClick = onPlayPauseClick),
             contentAlignment = Alignment.Center
         ) {
             PlayerIcon(
                 kind = if (isPlaying) PlayerIconKind.PAUSE else PlayerIconKind.PLAY,
-                tint = if (isPlaying) onPrimary else onSurface,
+                tint = if (isPlaying && canControlPlayback) onPrimary else onSurface.copy(alpha = if (canControlPlayback) 1f else 0.35f),
                 iconSize = 28.dp
             )
         }
@@ -92,12 +94,12 @@ fun PlayerControls(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .clickable(enabled = hasTrack, onClick = onNextClick),
+                .clickable(enabled = hasTrack && canControlPlayback, onClick = onNextClick),
             contentAlignment = Alignment.Center
         ) {
             PlayerIcon(
                 kind = PlayerIconKind.NEXT,
-                tint = onSurface.copy(alpha = if (hasTrack) 1f else 0.35f),
+                tint = onSurface.copy(alpha = if (controlsActive) 1f else 0.35f),
                 iconSize = 24.dp
             )
         }
@@ -107,11 +109,11 @@ fun PlayerControls(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .clickable(enabled = hasTrack, onClick = onLikeClick),
+                .clickable(enabled = hasTrack && canControlPlayback, onClick = onLikeClick),
             contentAlignment = Alignment.Center
         ) {
             HeartIcon(
-                tint = if (isLiked) primaryColor else onSurfaceVariant.copy(alpha = if (hasTrack) 0.8f else 0.35f),
+                tint = if (isLiked && controlsActive) primaryColor else onSurfaceVariant.copy(alpha = if (controlsActive) 0.8f else 0.35f),
                 isLiked = isLiked,
                 iconSize = 22.dp
             )

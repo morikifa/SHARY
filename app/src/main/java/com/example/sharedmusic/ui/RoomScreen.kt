@@ -25,6 +25,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.collectAsState
+import com.example.sharedmusic.connection.ConnectionManager
+import com.example.sharedmusic.connection.RoomDevice
+import com.example.sharedmusic.connection.RoomTrack
+import com.example.sharedmusic.model.Song
+import com.example.sharedmusic.viewmodel.MusicViewModel
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -67,6 +74,10 @@ sealed interface RoomConnection {
 // — подключённое состояние: участники, мини-плеер, чат
 @Composable
 fun RoomScreen(
+    connectionManager: ConnectionManager,
+    musicViewModel: MusicViewModel,
+    isHost: Boolean,
+    onRoleSelected: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -75,8 +86,11 @@ fun RoomScreen(
     val surface = MaterialTheme.colorScheme.surface
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
 
-    // Состояние подключения (по умолчанию — не подключено)
-    var connection by remember { mutableStateOf<RoomConnection>(RoomConnection.Disconnected) }
+    // Передача музыки: данные комнаты и плеера получаем от механики партнёра.
+    val roomCode = connectionManager.currentRoomCode
+    val songs by musicViewModel.songs.collectAsState()
+    val currentSong by musicViewModel.currentSong.collectAsState()
+    val isPlaying by musicViewModel.isPlaying.collectAsState()
 
     // Поле ввода кода для входа
     var joinCodeInput by remember { mutableStateOf("") }
@@ -106,65 +120,63 @@ fun RoomScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        when (val conn = connection) {
-            is RoomConnection.Disconnected -> {
-                // Начальное состояние: комната не подключена
-                DisconnectedContent(
-                    onCreateRoom = {
-                        // Генерируем 6-значный код (без путаемых символов 0, O, 1, I)
-                        val chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-                        val code = (1..6).map { chars.random() }.joinToString("")
-                        connection = RoomConnection.Connected(code, isHost = true)
-                    },
-                    joinCodeInput = joinCodeInput,
-                    onJoinCodeChange = { joinCodeInput = it },
-                    onJoinRoom = {
-                        if (joinCodeInput.length >= 4) {
-                            connection = RoomConnection.Connected(
-                                code = joinCodeInput.uppercase(),
-                                isHost = false
-                            )
-                        }
-                    },
-                    primaryColor = primaryColor,
-                    onSurface = onSurface,
-                    onSurfaceVariant = onSurfaceVariant,
-                    surface = surface,
-                    surfaceVariant = surfaceVariant
-                )
-            }
-
-            is RoomConnection.Connected -> {
-                // Подключённое состояние: участники, мини-плеер, чат
-                ConnectedContent(
-                    roomCode = conn.code,
-                    isHost = conn.isHost,
-                    chatMessages = chatMessages,
-                    chatInput = chatInput,
-                    onChatInputChange = { chatInput = it },
-                    onSendMessage = {
-                        val trimmed = chatInput.trim()
-                        if (trimmed.isNotEmpty() && trimmed.length <= 500) {
-                            chatMessages = chatMessages + RoomChatMessage(
-                                senderName = "Вы",
-                                text = trimmed,
-                                time = "Сейчас",
-                                isMe = true
-                            )
-                            chatInput = ""
-                        }
-                    },
-                    onLeaveRoom = {
-                        connection = RoomConnection.Disconnected
-                        chatMessages = emptyList()
-                    },
-                    primaryColor = primaryColor,
-                    onSurface = onSurface,
-                    onSurfaceVariant = onSurfaceVariant,
-                    surface = surface,
-                    surfaceVariant = surfaceVariant
-                )
-            }
+        Text(connectionManager.statusMessage, color = onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall)
+        if (connectionManager.isBusy) {
+            if (connectionManager.progressText.isNotBlank()) Text(connectionManager.progressText)
+            LinearProgressIndicator(progress = connectionManager.progress, modifier = Modifier.fillMaxWidth())
+        }
+        Spacer(Modifier.height(12.dp))
+        if (roomCode == null) {
+            DisconnectedContent(
+                onCreateRoom = { onRoleSelected(true); connectionManager.createRoom() },
+                joinCodeInput = joinCodeInput,
+                onJoinCodeChange = { joinCodeInput = it },
+                onJoinRoom = { onRoleSelected(false); connectionManager.joinRoom(joinCodeInput) },
+                isBusy = connectionManager.isBusy,
+                primaryColor = primaryColor,
+                onSurface = onSurface,
+                onSurfaceVariant = onSurfaceVariant,
+                surface = surface,
+                surfaceVariant = surfaceVariant
+            )
+        } else {
+            ConnectedContent(
+                roomCode = roomCode,
+                isHost = isHost,
+                devices = connectionManager.connectedDevices,
+                roomTracks = connectionManager.roomTracks,
+                songs = songs,
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+                isBusy = connectionManager.isBusy,
+                onShareSong = connectionManager::shareSong,
+                onDownloadTrack = { track ->
+                    connectionManager.downloadTrack(track) { file ->
+                        musicViewModel.addSongFromFile(file, track.title, track.id)
+                    }
+                },
+                onToggleMusic = musicViewModel::toggleMusic,
+                chatMessages = chatMessages,
+                chatInput = chatInput,
+                onChatInputChange = { chatInput = it },
+                onSendMessage = {
+                    val trimmed = chatInput.trim()
+                    if (trimmed.isNotEmpty() && trimmed.length <= 500) {
+                        chatMessages = chatMessages + RoomChatMessage("Вы", trimmed, "Сейчас", true)
+                        chatInput = ""
+                    }
+                },
+                onLeaveRoom = {
+                    connectionManager.leaveRoom()
+                    chatMessages = emptyList()
+                },
+                primaryColor = primaryColor,
+                onSurface = onSurface,
+                onSurfaceVariant = onSurfaceVariant,
+                surface = surface,
+                surfaceVariant = surfaceVariant
+            )
         }
     }
 }
@@ -176,6 +188,7 @@ private fun DisconnectedContent(
     joinCodeInput: String,
     onJoinCodeChange: (String) -> Unit,
     onJoinRoom: () -> Unit,
+    isBusy: Boolean = false,
     primaryColor: Color,
     onSurface: Color,
     onSurfaceVariant: Color,
@@ -212,6 +225,7 @@ private fun DisconnectedContent(
     // Кнопка «Создать комнату»
     Button(
         onClick = onCreateRoom,
+        enabled = !isBusy,
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp),
@@ -238,9 +252,9 @@ private fun DisconnectedContent(
     // Поле ввода кода для входа
     OutlinedTextField(
         value = joinCodeInput,
-        onValueChange = { onJoinCodeChange(it.take(6).uppercase()) },
+        onValueChange = { onJoinCodeChange(it.uppercase().filter { char -> char in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" }.take(4)) },
         label = { Text("Код комнаты") },
-        placeholder = { Text("Например: 7K9X2B") },
+        placeholder = { Text("Например: 7K9X") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -259,7 +273,7 @@ private fun DisconnectedContent(
             .fillMaxWidth()
             .height(52.dp),
         shape = RoundedCornerShape(16.dp),
-        enabled = joinCodeInput.length >= 4,
+        enabled = !isBusy && joinCodeInput.length == 4,
         colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
     ) {
         Text(
@@ -274,6 +288,15 @@ private fun DisconnectedContent(
 private fun ConnectedContent(
     roomCode: String,
     isHost: Boolean,
+    devices: List<RoomDevice>,
+    roomTracks: List<RoomTrack>,
+    songs: List<Song>,
+    currentSong: Song?,
+    isPlaying: Boolean,
+    isBusy: Boolean,
+    onShareSong: (Song) -> Unit,
+    onDownloadTrack: (RoomTrack) -> Unit,
+    onToggleMusic: () -> Unit,
     chatMessages: List<RoomChatMessage>,
     chatInput: String,
     onChatInputChange: (String) -> Unit,
@@ -345,43 +368,12 @@ private fun ConnectedContent(
 
             Spacer(Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Аватар хоста
-                ParticipantAvatar(
-                    name = if (isHost) "Вы" else "Хост",
-                    role = "Хост",
-                    color = primaryColor
-                )
-
-                // Линия связи
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .width(60.dp)
-                            .height(3.dp)
-                            .background(
-                                Brush.horizontalGradient(listOf(primaryColor, Color(0xFF4CAF50))),
-                                shape = RoundedCornerShape(2.dp)
-                            )
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Ожидание…",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
-                        color = onSurfaceVariant
-                    )
+            if (devices.isEmpty()) {
+                Text("Ожидание участников…", color = onSurfaceVariant)
+            } else {
+                devices.forEach { device ->
+                    Text(device.name, color = onSurface, modifier = Modifier.padding(vertical = 4.dp))
                 }
-
-                // Аватар гостя
-                ParticipantAvatar(
-                    name = if (!isHost) "Вы" else "Гость",
-                    role = "Гость",
-                    color = Color(0xFF8E24AA)
-                )
             }
         }
     }
@@ -396,7 +388,7 @@ private fun ConnectedContent(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Трек не выбран",
+                text = currentSong?.title ?: "Трек не выбран",
                 style = MaterialTheme.typography.bodyMedium,
                 color = onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -407,7 +399,41 @@ private fun ConnectedContent(
 
     Spacer(Modifier.height(16.dp))
 
-    // Чат комнаты
+    // Передача музыки: сначала отправьте песню, затем запустите её у хозяина.
+    if (isHost && currentSong != null) {
+        Button(onClick = onToggleMusic, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+            Text(if (isPlaying) "Пауза" else "Воспроизвести")
+        }
+    } else if (!isHost) {
+        Text("Управляет хозяин комнаты", color = onSurfaceVariant)
+    }
+    Spacer(Modifier.height(12.dp))
+    Text("Музыка в комнате", style = MaterialTheme.typography.titleSmall, color = onSurface)
+    if (roomTracks.isEmpty()) Text("Песен пока нет", color = onSurfaceVariant)
+    roomTracks.forEach { track ->
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(track.title, modifier = Modifier.weight(1f), color = onSurface, maxLines = 1)
+            if (songs.none { it.id == track.id }) {
+                Button(onClick = { onDownloadTrack(track) }, enabled = !isBusy) { Text("Скачать") }
+            }
+        }
+    }
+    if (isHost) {
+        Spacer(Modifier.height(12.dp))
+        Text("Мои песни", style = MaterialTheme.typography.titleSmall, color = onSurface)
+        Text("Сначала отправьте песню в комнату, затем запустите её в плеере.",
+            style = MaterialTheme.typography.bodySmall, color = onSurfaceVariant)
+        if (songs.isEmpty()) Text("Добавьте музыку на главном экране", color = onSurfaceVariant)
+        songs.forEach { song ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(song.title, modifier = Modifier.weight(1f), color = onSurface, maxLines = 1)
+                Button(onClick = { onShareSong(song) }, enabled = !isBusy) { Text("Отправить") }
+            }
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+
+    // Чат — только визуальная заготовка, сообщения не передаются.
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -415,7 +441,7 @@ private fun ConnectedContent(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Чат",
+                text = "Чат (только на этом устройстве)",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = onSurface
@@ -553,7 +579,14 @@ private fun ParticipantAvatar(
 @Composable
 private fun RoomScreenDisconnectedDarkPreview() {
     SharedMusicTheme(darkTheme = true) {
-        RoomScreen()
+        DisconnectedContent(
+            onCreateRoom = {}, joinCodeInput = "", onJoinCodeChange = {}, onJoinRoom = {},
+            primaryColor = MaterialTheme.colorScheme.primary,
+            onSurface = MaterialTheme.colorScheme.onSurface,
+            onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant,
+            surface = MaterialTheme.colorScheme.surface,
+            surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+        )
     }
 }
 
@@ -562,6 +595,13 @@ private fun RoomScreenDisconnectedDarkPreview() {
 @Composable
 private fun RoomScreenDisconnectedLightPreview() {
     SharedMusicTheme(darkTheme = false) {
-        RoomScreen()
+        DisconnectedContent(
+            onCreateRoom = {}, joinCodeInput = "", onJoinCodeChange = {}, onJoinRoom = {},
+            primaryColor = MaterialTheme.colorScheme.primary,
+            onSurface = MaterialTheme.colorScheme.onSurface,
+            onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant,
+            surface = MaterialTheme.colorScheme.surface,
+            surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+        )
     }
 }
